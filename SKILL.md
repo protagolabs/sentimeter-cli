@@ -34,6 +34,10 @@ what the CLI returns.**
      irm https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.ps1 | iex
      ```
 
+   After installing, **verify it succeeded** by running `sentimeter --help` — it
+   should print the usage/help text. If that still says `command not found`, the
+   user needs to open a new terminal (PATH not refreshed yet) before continuing.
+
 2. **Logged in.** Login is a 24h token obtained via an interactive Google
    device-flow in the browser. **You cannot do this for the user** — it needs a
    real person to open a URL and sign in with a whitelisted Google account
@@ -75,8 +79,33 @@ sentimeter ask "<the user's question, naming the company and platform>" --json
 
 - **`answer`** — the text answer. Summarize or relay this to the user.
 - **`chart_data`** — present only when the answer has a chart; otherwise `null`.
-  If the user wants the chart file, re-run with `--save-chart <path>` (writes the
-  Plotly JSON), or extract `chart_data` from the JSON you already have.
+  It is a **Plotly figure JSON** (typically `{ "data": [...], "layout": {...} }`).
+
+### Rendering the chart (do this whenever `chart_data` is present)
+
+If `chart_data` is not null, **render it for the user — don't just say "there's a
+chart."** The portable way (no Python needed) is to write a self-contained HTML
+file that loads Plotly from its CDN and embeds the figure, then open it in the
+browser:
+
+1. Get the figure JSON. Either take `chart_data` from the `--json` output, or
+   re-run with `--save-chart chart.json` to write it to a file.
+2. Write an HTML file (e.g. `chart.html`) like this, pasting the figure JSON in
+   place of `FIGURE_JSON`:
+   ```html
+   <!doctype html><meta charset="utf-8">
+   <div id="chart" style="width:100%;height:90vh"></div>
+   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+   <script>
+     const fig = FIGURE_JSON;            // ← the chart_data object
+     Plotly.newPlot("chart", fig.data || fig, fig.layout || {}, {responsive:true});
+   </script>
+   ```
+3. Open it: `open chart.html` (macOS), `xdg-open chart.html` (Linux), or
+   `start chart.html` (Windows PowerShell).
+
+Tell the user where the file is. If you're in an environment that can render
+HTML inline (e.g. an artifact/canvas), use that instead of opening a browser.
 
 ## Examples
 
