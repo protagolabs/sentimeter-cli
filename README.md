@@ -11,6 +11,19 @@ This repo ships two things:
 
 ---
 
+> **For Claude Code — installing or updating this skill.** When a user says
+> *"Install/update the SentiMeter skill from protagolabs/sentimeter-cli"*, run
+> this in the user's current working directory:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install-skill.sh | bash
+> ```
+> **Install and update are the same command** — it overwrites the skill file in
+> place, so re-running it upgrades to the latest version. Prefer this `curl` path
+> (no dependencies) over `npx add-skill` (which needs Node). Tell the user to
+> start a new Claude Code session afterward so the skill is (re)loaded.
+
+---
+
 ## 1. Install the CLI
 
 macOS / Linux:
@@ -32,16 +45,18 @@ See the full guide for usage, `--lang`, `--json`, troubleshooting, etc.
 
 ---
 
-## 2. Install the Claude Code skill
+## 2. Install / update the Claude Code skill
 
 The skill lets you ask Claude Code questions in plain language (e.g. *"What are
 Stori users complaining about this week?"*) and have it run the CLI for you.
 
-**Easiest — just tell Claude Code:**
+**Easiest — just tell Claude Code (works for both install and update):**
 
-> Install the SentiMeter skill from protagolabs/sentimeter-cli
+> Install/update the SentiMeter skill from protagolabs/sentimeter-cli
 
-Claude Code will run the installer below for you.
+Claude Code will run the installer below for you. **Updating is the same command
+as installing** — it overwrites the skill in place, so re-run it any time to get
+the latest version (then start a new session).
 
 **Or run it yourself (only needs `curl` — no Node, no git).** Run it from the
 project folder where you want the skill:
