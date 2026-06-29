@@ -18,7 +18,7 @@ set -euo pipefail
 
 REPO="protagolabs/sentimeter-cli"
 BRANCH="${SENTIMETER_SKILL_BRANCH:-main}"
-RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}/SKILL.md"
+RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}/skills/sentimeter/SKILL.md"
 
 # Default: project-local (current dir). Opt into global with SENTIMETER_SKILL_GLOBAL=1.
 if [ -n "${CLAUDE_SKILLS_DIR:-}" ]; then

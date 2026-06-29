@@ -1,0 +1,15 @@
+{
+  "name": "sentimeter",
+  "owner": {
+    "name": "Protago Labs",
+    "email": "engineering@protagolabs.com"
+  },
+  "plugins": [
+    {
+      "name": "sentimeter",
+      "source": ".",
+      "description": "Ask the SentiMeter agent about app ratings, reviews, and user-sentiment trends (Stori, Klar, Nubank, DiDi finanzas) from inside Claude Code, via the sentimeter CLI.",
+      "version": "0.1.0"
+    }
+  ]
+}
