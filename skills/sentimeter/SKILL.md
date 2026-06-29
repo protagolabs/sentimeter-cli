@@ -18,31 +18,60 @@ The CLI talks to the SentiMeter agent backend; your job is to run it, read its
 output, and present the answer. **Do not invent ratings or numbers — report only
 what the CLI returns.**
 
-## Prerequisites (check, don't assume)
+## Setup — do this yourself, don't hand the user a checklist
 
-1. **CLI installed.** The tool is the `sentimeter` binary on PATH. If a call fails
-   with `command not found`, the user has not installed it yet — give them the
-   **one installer that matches their OS** (don't paste both), and do **not** try
-   to `pip install` or build from source:
+The CLI may not be installed or logged in yet. **Handle that for the user
+automatically** — run the commands below via your shell tool. Don't tell the
+user "go install X then run Y"; just do it, narrating briefly ("Installing the
+sentimeter CLI…", "Opening login…"). The only thing you genuinely cannot do for
+them is the browser sign-in itself.
 
-   - **macOS / Linux:**
-     ```bash
-     curl -fsSL https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.sh | bash
-     ```
-   - **Windows (PowerShell):**
-     ```powershell
-     irm https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.ps1 | iex
-     ```
+### 1. Ensure the CLI is installed (auto)
 
-   After installing, **verify it succeeded** by running `sentimeter --help` — it
-   should print the usage/help text. If that still says `command not found`, the
-   user needs to open a new terminal (PATH not refreshed yet) before continuing.
+First check: run `sentimeter --help`. If it prints usage, skip to login.
 
-2. **Logged in.** Login is a 24h token obtained via an interactive Google
-   device-flow in the browser. **You cannot do this for the user** — it needs a
-   real person to open a URL and sign in with a whitelisted Google account
-   (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`). If you hit a login
-   wall, tell them to run `sentimeter login` themselves, then continue.
+If it's `command not found`, **install it yourself** (don't ask permission first
+beyond your tool's normal prompt; the user clearly wants this). Pick by OS — do
+**not** `pip install` or build from source:
+
+- **macOS / Linux:**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.sh | bash
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  irm https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.ps1 | iex
+  ```
+
+The installer drops the binary in `~/.local/bin` or `/usr/local/bin`, which may
+not be on PATH in your current shell. So after installing, **find it and use it**
+without making the user open a new terminal:
+```bash
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+sentimeter --help   # or call the full path, e.g. ~/.local/bin/sentimeter
+```
+Use that same resolved `sentimeter` (PATH-fixed or full path) for every command
+below.
+
+### 2. Ensure logged in (auto-initiate, user just signs in)
+
+Login is a 24h Google device-flow token. You can't complete the Google sign-in
+for the user, but you **can drive the whole thing** so they only click once:
+
+1. **Run `sentimeter login` in the background** (it prints a URL + short code,
+   then polls until the user authorizes). Running it backgrounded lets you read
+   the URL/code from its output while it waits.
+2. **Immediately relay the URL and code to the user** and ask them to open it and
+   sign in with a whitelisted Google account
+   (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`), confirming the code
+   matches. (`sentimeter login` also tries to open the browser automatically.)
+3. **Wait for the command to finish**, then confirm with `sentimeter whoami`.
+
+If a later `ask` fails with `401` / "Token expired", the 24h token lapsed —
+**re-run the login flow above automatically**, don't just report the error.
+
+If login says **access denied**, their Google account isn't whitelisted — that's
+the one case to stop and tell them (you can't fix it).
 
 ## How to answer a question
 
@@ -123,17 +152,18 @@ sentimeter whoami
 
 ## Error handling
 
-| What you see | What it means → what to tell the user |
+| What you see | What it means → what YOU do (don't just report it) |
 |---|---|
-| `command not found: sentimeter` | CLI not installed → give the installer command above. |
-| `Token expired or invalid` / 401 | 24h login lapsed → user must run `sentimeter login` again (browser). |
-| login **access denied** | Their Google account isn't whitelisted (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`). |
+| `command not found: sentimeter` | CLI not installed → run the installer yourself (Setup §1), then retry. |
+| `Token expired or invalid` / 401 | 24h login lapsed → re-run the login flow yourself (Setup §2), then retry. |
+| login **access denied** | Their Google account isn't whitelisted (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`) → **stop and tell them** (you can't fix this). |
 | `Request timed out` | Backend busy → wait and try once more. |
 
 ## Don't
 
 - Don't fabricate ratings, percentages, or trends — only relay what `ask` returns.
-- Don't attempt `sentimeter login` non-interactively or try to capture/store the
-  user's Google credentials or token.
+- Do initiate `sentimeter login` for the user (Setup §2), but **never** try to
+  bypass the browser sign-in, enter their Google password, or capture/store their
+  credentials or token — the human completes the sign-in themselves.
 - Don't fall back to other install methods (pip, source) when the binary is
-  missing — the supported path is the installer above.
+  missing — the supported path is the installer in Setup §1.
