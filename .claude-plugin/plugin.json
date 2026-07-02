@@ -1,7 +1,7 @@
 {
   "name": "sentimeter",
-  "description": "Ask the SentiMeter agent about app ratings, reviews, and user-sentiment trends (Stori, Klar, Nubank, DiDi finanzas) from inside Claude Code, via the sentimeter CLI.",
-  "version": "0.1.0",
+  "description": "Query app ratings, reviews, and user-sentiment trends (Stori, Klar, Nubank, DiDi finanzas) from inside Claude Code via the sentimeter CLI — read-only SQL over the comments DB.",
+  "version": "0.2.0",
   "author": {
     "name": "Protago Labs",
     "email": "engineering@protagolabs.com"

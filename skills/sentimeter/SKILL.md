@@ -52,6 +52,10 @@ Notes on running queries:
 - For numbers and trends, aggregate. To read what users are actually saying, pull
   a bounded sample of `content` / `summary` (e.g. `LIMIT 50` with a tight
   `WHERE`) and read the themes yourself.
+- **A week runs Sunday → Saturday.** For "this week" / "last week" / weekly
+  summaries, bucket `created_at` into Sunday-started weeks (e.g. floor each
+  timestamp to the preceding Sunday) and label a week by its Sunday date. Be
+  explicit about the week's date range when you present the answer.
 
 ### Critical data caveats (also surfaced in `schema` notes)
 
