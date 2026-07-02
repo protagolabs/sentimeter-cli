@@ -43,9 +43,11 @@ beyond your tool's normal prompt; the user clearly wants this). Pick by OS — d
   irm https://raw.githubusercontent.com/protagolabs/sentimeter-cli/main/install.ps1 | iex
   ```
 
-The installer drops the binary in `~/.local/bin` or `/usr/local/bin`, which may
-not be on PATH in your current shell. So after installing, **find it and use it**
-without making the user open a new terminal:
+The installer drops the binary in `~/.local/bin` or `/usr/local/bin` and appends
+that dir to the user's shell rc file (`~/.zshrc` etc.), so **future terminals the
+user opens will find `sentimeter` on their own**. But your *current* shell was
+already running, so it won't have picked up that PATH change yet. So after
+installing, **find it and use it** without making the user open a new terminal:
 ```bash
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 sentimeter --help   # or call the full path, e.g. ~/.local/bin/sentimeter
@@ -62,30 +64,51 @@ for the user, but you **can drive the whole thing** so they only click once:
    then polls until the user authorizes). Running it backgrounded lets you read
    the URL/code from its output while it waits.
 2. **Immediately relay the URL and code to the user** and ask them to open it and
-   sign in with a whitelisted Google account
-   (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`), confirming the code
-   matches. (`sentimeter login` also tries to open the browser automatically.)
+   sign in with an authorized Google account, confirming the code matches.
+   (`sentimeter login` also tries to open the browser automatically.)
 3. **Wait for the command to finish**, then confirm with `sentimeter whoami`.
 
 If a later `ask` fails with `401` / "Token expired", the 24h token lapsed —
 **re-run the login flow above automatically**, don't just report the error.
 
-If login says **access denied**, their Google account isn't whitelisted — that's
-the one case to stop and tell them (you can't fix it).
+If login says **access denied**, the Google account they used isn't authorized —
+usually because they signed in with a personal account. **Tell them to re-run the
+login and sign in with their company email.** If it still fails with a company
+account, that account isn't authorized and you can't fix it — stop and let them
+know.
 
 ## How to answer a question
 
-**Every question must name both a company and a platform.**
+Both the company and the platform are **flexible** — a question can target one,
+several (a comparison), or all of them. Neither is mandatory; only scope down
+when the user actually asks you to.
 
-- **Company** — one of: **Stori**, **Klar**, **Nubank**, **DiDi finanzas**
-- **Platform** — one of: **Google Play**, **App Store**, **Facebook**
+- **Company** — any of: **Stori**, **Klar**, **Nubank**, **DiDi finanzas**. The
+  user may want one, a comparison of several, or all of them. Use whatever they
+  indicated. If they gave no hint at all, **don't ask in free text — present the
+  choices as selectable options** (use the question/options tool your harness
+  provides): one option per company (**Stori**, **Klar**, **Nubank**,
+  **DiDi finanzas**) plus an **All companies** option, and let them pick one or
+  several. Only fall back to a plain-text question if no options UI is available.
+- **Platform** — depends on the company:
+  - **Stori**: **Google Play**, **App Store**, **Facebook**, **Facebook Groups**,
+    **Instagram**, **X**, **TikTok**, **LinkedIn**
+  - **Klar / Nubank / DiDi finanzas**: **Google Play**, **App Store**,
+    **Facebook**, **Facebook Groups**
 
-If the user's request leaves either one unclear, **ask them first** (offer the
-relevant list) — do not guess or default. Ask only for what's missing: if they
-named the company but not the platform, just ask the platform, and vice versa.
-Once you know both, make sure they appear in the question string you pass to
-`ask` (e.g. rewrite "why did the rating drop?" →
-"why did Klar's rating drop on Google Play?").
+  Like company, platform is flexible — one, several, or all. If the user didn't
+  specify one, **don't guess and don't ask in free text — present the choices as
+  selectable options** (same question/options tool): one option per platform
+  available for the company in scope, plus an **All platforms** option, and let
+  them pick one or several. Show only the platforms valid for that company (Stori
+  has the full list above; the others have just the four). Only scope to a
+  specific platform when the user names it or picks it.
+
+Whatever company/platform scope you land on, make it explicit in the question
+string you pass to `ask` (e.g. "why did Klar's rating drop on Google Play?", or
+"compare Stori vs Nubank ratings across all platforms"). When the scope is all
+companies or all platforms, say so — e.g. "across all platforms" — so the answer
+covers every one.
 
 **Always run with `--json`** so you get a parseable response:
 
@@ -156,7 +179,7 @@ sentimeter whoami
 |---|---|
 | `command not found: sentimeter` | CLI not installed → run the installer yourself (Setup §1), then retry. |
 | `Token expired or invalid` / 401 | 24h login lapsed → re-run the login flow yourself (Setup §2), then retry. |
-| login **access denied** | Their Google account isn't whitelisted (`@storicard.com` / `@protagolabs.com` / `@netmind.ai`) → **stop and tell them** (you can't fix this). |
+| login **access denied** | Wrong account → **tell them to re-run login with their company email.** If a company account still fails, it's not authorized (you can't fix this). |
 | `Request timed out` | Backend busy → wait and try once more. |
 
 ## Don't
