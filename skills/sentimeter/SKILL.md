@@ -1,6 +1,6 @@
 ---
 name: sentimeter
-description: "Use when the user asks a social-listening / business-analytics question about a fintech app (Stori, Klar, Nubank, or DiDi finanzas) — app ratings, reviews, and user sentiment across app stores and social platforms (averages, trends, score distribution, why a rating changed, weekly summaries, themes, complaints, praise, top issues). Answers by driving the `sentimeter` CLI to run read-only SQL over the comments DB. Triggers: SentiMeter, fintech app sentiment/ratings/reviews/app feedback/social listening."
+description: "Use when the user asks a social-listening / business-analytics question about a fintech app (Stori, Klar, Nubank, or DiDi finanzas) — app ratings, reviews, and user sentiment across app stores and social platforms (averages, trends, score distribution, why a rating changed, weekly summaries, themes, complaints, praise, top issues). Answers by driving the `sentimeter` CLI to run read-only structured queries (a JSON DSL) over the comments DB. Triggers: SentiMeter, fintech app sentiment/ratings/reviews/app feedback/social listening."
 ---
 
 # SentiMeter
@@ -8,25 +8,30 @@ description: "Use when the user asks a social-listening / business-analytics que
 Answer social-listening / business-analytics questions about a fintech app
 (**Stori, Klar, Nubank, or DiDi finanzas**) — ratings, reviews, sentiment,
 trends, themes, complaints, praise — by driving the `sentimeter` command-line
-tool, which runs **read-only SQL over the `comments` database**.
+tool, which runs **read-only structured queries over the `comments` database**.
 
-Your job is to inspect the data contract, write SQL, run it, read the rows, and
-present the answer. **Do not invent ratings or numbers — report only what the
-query returns.**
+Queries are a **JSON DSL** (not raw SQL): a JSON object with `select`, `filters`,
+`group_by`, `order_by`, and `limit`. The CLI compiles it server-side to
+parameterized SQL, so every value is safely bound — you never write SQL yourself.
+
+Your job is to inspect the data contract, build the query object, run it, read
+the rows, and present the answer. **Do not invent ratings or numbers — report
+only what the query returns.**
 
 ## The core workflow: schema → query
 
-Every data question follows the same two steps. **Never write SQL from memory —
-always read the schema first**, because the field contract is computed live from
-the DB and its columns, enum values, and caveats change over time.
+Every data question follows the same two steps. **Never build a query from memory
+— always read the schema first**, because the field contract is computed live
+from the DB and its columns, enum values, and caveats change over time.
 
 1. **`sentimeter schema`** — prints the field contract for the `comments` table:
    each field's type, its capabilities (filterable / groupable / sortable /
-   searchable), enum values, and a **notes** section with critical data caveats
-   (see below). Read this before composing any query.
-2. **`sentimeter query "<SELECT …>"`** — runs a read-only SQL query (SELECT / WITH
-   only) and prints a Markdown table. Use the exact column names and enum values
-   the schema reported. Then read the rows and answer the user.
+   searchable), enum values, a **notes** section with critical data caveats (see
+   below), and a **`dsl` grammar block** with a copy-pasteable example. Read this
+   before composing any query.
+2. **`sentimeter query '<JSON DSL>'`** — runs a read-only query described by a
+   JSON object and prints a Markdown table. Use the exact column names and enum
+   values the schema reported. Then read the rows and answer the user.
 
 Use the **default output** for both (a Markdown table you can read directly). Do
 **not** pass `--json` — you consume the tables yourself. (`--human` exists for a
@@ -34,28 +39,55 @@ colored terminal view; you don't need it either.)
 
 ```bash
 sentimeter schema
-sentimeter query "SELECT brand, COUNT(*) AS n, ROUND(AVG(CAST(score AS FLOAT)),2) AS avg_score FROM comments WHERE score IS NOT NULL AND year >= 2019 GROUP BY brand ORDER BY n DESC"
+sentimeter query '{"select":[{"column":"brand"},{"agg":"count","alias":"n"},{"agg":"avg","column":"score","cast_float":true,"round":2,"alias":"avg_score"}],"filters":[{"column":"score","op":"is_not_null"},{"column":"year","op":">=","value":2019}],"group_by":["brand"],"order_by":[{"field":"n","direction":"desc"}]}'
 ```
 
-SQL can also come from a file (`-f PATH`) or stdin (pipe or `-`):
+The JSON DSL can also come from a file (`--file PATH`) or stdin (pipe or `-`):
 
 ```bash
-echo "SELECT platform, COUNT(*) n FROM comments GROUP BY platform ORDER BY n DESC" | sentimeter query
+echo '{"select":[{"column":"platform"},{"agg":"count","alias":"n"}],"group_by":["platform"],"order_by":[{"field":"n","direction":"desc"}]}' | sentimeter query
 ```
+
+### DSL shape
+
+A query is a JSON object with up to five keys (`select` required):
+
+| key | required | meaning |
+|-----|----------|---------|
+| `select` | yes | ≥1 output items: plain columns and/or aggregates. |
+| `filters` | no | Predicates combined with **AND** (no OR / nesting). |
+| `group_by` | no | Columns to group by. If any `select` item is an aggregate, every *plain* select column must also appear here. |
+| `order_by` | no | Sort keys `[{field, direction}]`, applied in order. |
+| `limit` | no | Row cap, clamped to **500**. `--max-rows N` overrides it. |
+
+- **`select` item** — `{ "column": "..." }` for a plain projection, or an
+  aggregate `{ "agg": "count"|"avg"|"min"|"max"|"sum", "column": "...", "cast_float": true, "round": 2, "alias": "..." }`.
+  `count` may omit `column` → `COUNT(*)`. Use `"cast_float": true` for `avg`/`sum`
+  on `score` (it's enum-typed). `alias` names the output column (auto-derived if
+  omitted, e.g. `avg_score`).
+- **`filters` item** — `{ "column": "...", "op": "...", "value": ... }`, all ANDed.
+  Ops: `=` `!=` `<` `<=` `>` `>=` `is_null` `is_not_null` `in`. `value` is a
+  scalar for comparisons, a **non-empty array** for `in`, and **omitted** for
+  `is_null` / `is_not_null`. Send values raw (no quoting) — they're bound as
+  parameters. Enum columns validate `=`/`in` values against the allowed set.
+- **`order_by` item** — `{ "field": <column or select alias>, "direction": "asc"|"desc" }`
+  (direction defaults to `asc`). Sort by an alias — e.g. `"field": "n"` — to
+  express `ORDER BY count DESC`.
 
 Notes on running queries:
 
 - Results are **capped at 500 rows**. For anything that isn't naturally small,
-  **aggregate** (`GROUP BY` / `COUNT` / `AVG`) rather than dumping raw rows; use
-  `--max-rows N` to return fewer.
-- Only `SELECT` / `WITH` are allowed — write attempts are rejected server-side.
+  **aggregate** (`group_by` with `count`/`avg`) rather than dumping raw rows; use
+  `limit` or `--max-rows N` to return fewer.
+- The DSL is **read-only by construction** — there is no way to express a write.
 - For numbers and trends, aggregate. To read what users are actually saying, pull
-  a bounded sample of `content` / `summary` (e.g. `LIMIT 50` with a tight
-  `WHERE`) and read the themes yourself.
+  a bounded sample of `content` / `summary` (e.g. `"limit": 50` with tight
+  `filters`) and read the themes yourself.
 - **A week runs Sunday → Saturday.** For "this week" / "last week" / weekly
-  summaries, bucket `created_at` into Sunday-started weeks (e.g. floor each
-  timestamp to the preceding Sunday) and label a week by its Sunday date. Be
-  explicit about the week's date range when you present the answer.
+  summaries, pull the relevant `created_at` rows (or aggregate by a date column
+  the schema exposes) and bucket into Sunday-started weeks yourself, labeling a
+  week by its Sunday date. Be explicit about the week's date range when you
+  present the answer.
 
 ### Critical data caveats (also surfaced in `schema` notes)
 
@@ -83,9 +115,9 @@ answer clearer — a **trend over time**, a **distribution**, or a **comparison
 across brands/platforms** — draw one from the query results. The query returns
 data, not charts, so you build the visualization yourself.
 
-- **Aggregate in SQL first**, then chart the small result set — e.g. `GROUP BY
-  year, month` for a trend, `GROUP BY score` for a distribution, `GROUP BY brand`
-  for a comparison. Don't try to chart hundreds of raw rows.
+- **Aggregate in the query first**, then chart the small result set — e.g.
+  `group_by` a date column for a trend, `group_by: ["score"]` for a distribution,
+  `group_by: ["brand"]` for a comparison. Don't try to chart hundreds of raw rows.
 - **How to render** depends on your harness:
   - If you can render an inline artifact / canvas, use that — a self-contained
     HTML page with the chart. (Inline CSS/JS only; embed the data, no external
@@ -100,8 +132,9 @@ data, not charts, so you build the visualization yourself.
 ## Scoping: company and platform
 
 Both are **flexible** — a question can target one, several (a comparison), or all
-of them. Neither is mandatory; only scope down when the user asks. In SQL these
-map to `WHERE brand IN (…)` and `WHERE platform IN (…)`.
+of them. Neither is mandatory; only scope down when the user asks. In the DSL
+these map to `filters` on `brand` and `platform` (`op: "="` for one,
+`op: "in"` with an array for several).
 
 - **Company** → `brand` enum: `stori`, `klar`, `nubank`, `didi_finanzas`.
 - **Platform** → `platform` enum, and the valid set depends on the company:
@@ -183,10 +216,13 @@ know.
 
 ```bash
 # Score distribution for Stori on Google Play in 2026.
-sentimeter query "SELECT score, COUNT(*) AS n FROM comments WHERE brand='stori' AND platform='google_play' AND year=2026 AND score IS NOT NULL GROUP BY score ORDER BY score"
+sentimeter query '{"select":[{"column":"score"},{"agg":"count","alias":"n"}],"filters":[{"column":"brand","op":"=","value":"stori"},{"column":"platform","op":"=","value":"google_play"},{"column":"year","op":"=","value":2026},{"column":"score","op":"is_not_null"}],"group_by":["score"],"order_by":[{"field":"score"}]}'
 
 # Read a bounded sample of recent negative Stori reviews to spot themes.
-sentimeter query "SELECT created_at, score, content FROM comments WHERE brand='stori' AND platform='google_play' AND score <= 2 AND year=2026 ORDER BY created_at DESC LIMIT 50"
+sentimeter query '{"select":[{"column":"created_at","alias":"at"},{"column":"score"},{"column":"content"}],"filters":[{"column":"brand","op":"=","value":"stori"},{"column":"platform","op":"=","value":"google_play"},{"column":"score","op":"<=","value":2},{"column":"year","op":"=","value":2026}],"order_by":[{"field":"created_at","direction":"desc"}],"limit":50}'
+
+# Per-category review count + mean score for Stori app-store/Google-Play reviews since 2024.
+sentimeter query '{"select":[{"column":"category"},{"agg":"count","alias":"n"},{"agg":"avg","column":"score","cast_float":true,"round":2,"alias":"avg_score"}],"filters":[{"column":"brand","op":"=","value":"stori"},{"column":"platform","op":"in","value":["app_store","google_play"]},{"column":"year","op":">=","value":2024},{"column":"category","op":"is_not_null"},{"column":"category","op":"!=","value":""}],"group_by":["category"],"order_by":[{"field":"n","direction":"desc"}],"limit":20}'
 ```
 
 ## Error handling
@@ -196,8 +232,7 @@ sentimeter query "SELECT created_at, score, content FROM comments WHERE brand='s
 | `command not found: sentimeter` | CLI not installed → run the installer yourself (Setup §1), then retry. |
 | `Token expired or invalid` / 401 | 24h login lapsed → re-run the login flow yourself (Setup §2), then retry. |
 | login **access denied** | Wrong account → **tell them to re-run login with their company email.** If a company account still fails, it's not authorized (you can't fix this). |
-| `Only SELECT / WITH read queries are allowed` | You sent a non-read query → rewrite as a `SELECT` / `WITH`. |
-| SQL / column error | You guessed a column or enum value → re-run `sentimeter schema` and use the exact names/values it reports. |
+| `{"error": "<message>"}` (unknown column, bad enum value, aggregate mixed with a non-grouped column, malformed JSON) | The query object was invalid → the message says what → re-run `sentimeter schema` for the exact column/enum names and DSL rules, fix the JSON, and retry. |
 | `Request timed out` / 5xx | Backend busy → wait and try once more. |
 
 ## Don't
